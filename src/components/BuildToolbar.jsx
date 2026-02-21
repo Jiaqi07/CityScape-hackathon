@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { BUILDING_LIST, BUILDING_CATEGORIES, SPECIAL_TOOLS, calcPlacementCostM } from '../data/buildings';
 
-export default function BuildToolbar({ activeTool, onSelectTool, onUndo, buildCount, cashM }) {
+export default function BuildToolbar({ activeTool, onSelectTool, onUndo, buildCount, totalSpentM }) {
   const [category, setCategory] = useState('city');
 
   const tools = useMemo(() => ([
@@ -48,15 +48,13 @@ export default function BuildToolbar({ activeTool, onSelectTool, onUndo, buildCo
       {visible.map(b => {
         const active = activeTool === b.id;
         const cost = b.id === 'expand' ? null : calcPlacementCostM(b.id);
-        const disabled = typeof cost === 'number' ? cost > (cashM ?? Infinity) : false;
         return (
           <button
             key={b.id}
             onClick={() => onSelectTool(active ? null : b.id)}
-            disabled={disabled}
             className={`group relative flex flex-col items-center transition-all duration-200 ${
-              disabled ? 'opacity-40 cursor-not-allowed' : ''
-            } ${active ? 'translate-y-[-6px]' : disabled ? '' : 'hover:translate-y-[-3px]'}`}
+              active ? 'translate-y-[-6px]' : 'hover:translate-y-[-3px]'
+            }`}
           >
             {/* Tooltip */}
             <div className={`absolute bottom-full mb-2.5 px-3 py-2 rounded-lg bg-[rgba(8,16,32,0.97)] border border-[var(--border)] backdrop-blur-xl whitespace-nowrap transition-all duration-200 ${
@@ -83,11 +81,6 @@ export default function BuildToolbar({ activeTool, onSelectTool, onUndo, buildCo
                 <div className="font-mono text-[7px] mt-0.5 text-[var(--dim)] opacity-60">
                   {b.sim.housing > 0 && <span>🏠 {b.sim.housing} units </span>}
                   {b.sim.jobs > 0 && <span>💼 {b.sim.jobs} jobs</span>}
-                </div>
-              )}
-              {disabled && (
-                <div className="font-mono text-[7px] text-[#ff6b6b] mt-1">
-                  Not enough budget
                 </div>
               )}
             </div>

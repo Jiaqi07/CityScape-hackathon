@@ -1,5 +1,5 @@
-import { useRef, useMemo, useState, useCallback } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { useRef, useMemo, useState, useCallback, useEffect } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, Html, Float } from '@react-three/drei';
 import * as THREE from 'three';
 import { BUILDING_TYPES } from '../data/buildings';
@@ -692,7 +692,77 @@ function InteractiveGrid({ gridSize, activeTool, occupiedTiles, onTileClick, onT
   );
 }
 
-function CameraRig({ gridSize }) {
+function CameraZoomIn({ gridSize, animateIn }) {
+  const { camera } = useThree();
+  const controlsRef = useRef();
+  const animRef = useRef({ started: false, t: 0, done: false });
+
+  const startPos = useMemo(() => new THREE.Vector3(0, gridSize * 4, 0.01), [gridSize]);
+  const endPos = useMemo(() => new THREE.Vector3(
+    gridSize * 0.65,
+    gridSize * 0.55,
+    gridSize * 0.65,
+  ), [gridSize]);
+
+  useEffect(() => {
+    if (!animateIn) {
+      camera.position.copy(startPos);
+      camera.lookAt(0, 0, 0);
+    }
+  }, [animateIn, camera, startPos]);
+
+  useFrame((_, delta) => {
+    if (!animateIn || animRef.current.done) return;
+
+    if (!animRef.current.started) {
+      animRef.current.started = true;
+      animRef.current.t = 0;
+      camera.position.copy(startPos);
+    }
+
+    const duration = 1.4;
+    animRef.current.t += delta / duration;
+    const rawT = Math.min(1, animRef.current.t);
+    const t = rawT < 0.5
+      ? 4 * rawT * rawT * rawT
+      : 1 - Math.pow(-2 * rawT + 2, 3) / 2;
+
+    camera.position.lerpVectors(startPos, endPos, t);
+    camera.lookAt(0, 0, 0);
+
+    if (controlsRef.current) {
+      controlsRef.current.target.set(0, 0, 0);
+      controlsRef.current.update();
+    }
+
+    if (rawT >= 1) {
+      animRef.current.done = true;
+      if (controlsRef.current) {
+        controlsRef.current.enabled = true;
+      }
+    }
+  });
+
+  return (
+    <OrbitControls
+      ref={controlsRef}
+      makeDefault
+      maxPolarAngle={Math.PI / 2.3}
+      minPolarAngle={Math.PI / 6}
+      maxDistance={gridSize * 2}
+      minDistance={4}
+      enableDamping
+      dampingFactor={0.05}
+      target={[0, 0, 0]}
+      enabled={animRef.current.done || !animateIn}
+    />
+  );
+}
+
+function CameraRig({ gridSize, animateIn }) {
+  if (animateIn !== undefined) {
+    return <CameraZoomIn gridSize={gridSize} animateIn={animateIn} />;
+  }
   return (
     <OrbitControls
       makeDefault
@@ -773,6 +843,7 @@ function SceneContent({
   onUnlockChunk,
   onSelectBuilding,
   onDeselectBuilding,
+  animateIn,
 }) {
   const [hoveredTile, setHoveredTile] = useState({ x: null, z: null });
   const [hoveredBuilding, setHoveredBuilding] = useState(null);
@@ -833,7 +904,7 @@ function SceneContent({
 
   return (
     <>
-      <CameraRig gridSize={gridSize} />
+      <CameraRig gridSize={gridSize} animateIn={animateIn} />
 
       {/* Enhanced lighting */}
       <ambientLight intensity={0.45} />
@@ -939,6 +1010,7 @@ export default function CityScene({
   onSelectBuilding,
   onDeselectBuilding,
   onReady,
+  animateIn,
 }) {
   const city = CITIES[activeCity];
   const gridSize = city?.worldSize || 40;
@@ -947,7 +1019,7 @@ export default function CityScene({
   return (
     <div className="absolute inset-0" style={{ background: '#050a14' }}>
       <Canvas
-        camera={{ position: [gridSize * 0.65, gridSize * 0.55, gridSize * 0.65], fov: 45 }}
+        camera={{ position: [0, gridSize * 4, 0.01], fov: 45 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
         onCreated={({ gl }) => {
@@ -969,6 +1041,7 @@ export default function CityScene({
           onUnlockChunk={onUnlockChunk}
           onSelectBuilding={onSelectBuilding}
           onDeselectBuilding={onDeselectBuilding}
+          animateIn={animateIn}
         />
       </Canvas>
     </div>

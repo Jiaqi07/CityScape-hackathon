@@ -7,6 +7,8 @@ import HUD from './components/HUD';
 import BuildToolbar from './components/BuildToolbar';
 import BuildingInfo from './components/BuildingInfo';
 import LoadingScreen from './components/LoadingScreen';
+import MapZoomTransition from './components/MapZoomTransition';
+import AIChatBox from './components/AIChatBox';
 import loadingVideo from './loading screen.mp4';
 
 export default function App() {
@@ -18,9 +20,12 @@ export default function App() {
   const [activeTool, setActiveTool] = useState(null);
   const [selectedBuilding, setSelectedBuilding] = useState(null);
   const [unlockedChunks, setUnlockedChunks] = useState(city?.initialChunks || [[2, 2], [3, 2], [2, 3], [3, 3]]);
-  const [cashM, setCashM] = useState(650); // $M starting budget
+  const [totalSpentM, setTotalSpentM] = useState(0);
   const [expandSpentM, setExpandSpentM] = useState(0);
   const [sceneReady, setSceneReady] = useState(false);
+  const [loadingDone, setLoadingDone] = useState(false);
+  const [showMapZoom, setShowMapZoom] = useState(false);
+  const [mapZoomDone, setMapZoomDone] = useState(false);
 
   const cityBuildings = placedBuildings;
 
@@ -28,14 +33,31 @@ export default function App() {
     let netMw = 0;
     let genMw = 0;
     let loadMw = 0;
+    const byType = { wind: 0, solar: 0, nuclear: 0, battery: 0 };
     cityBuildings.forEach(b => {
       const { netMw: n, effectiveMw } = calcBuildingEffect(b);
       netMw += n;
       const spec = BUILDING_TYPES[b.type];
-      if (spec?.type === 'generation') genMw += effectiveMw;
+      if (spec?.type === 'generation') {
+        genMw += effectiveMw;
+        if (b.type === 'wind') byType.wind += effectiveMw;
+        else if (b.type === 'solar') byType.solar += effectiveMw;
+        else if (b.type === 'nuclear') byType.nuclear += effectiveMw;
+      }
+      if (spec?.type === 'storage' && b.type === 'battery') byType.battery += effectiveMw;
       if (spec?.type === 'load') loadMw += effectiveMw;
     });
-    return { netMw, genMw, loadMw };
+    const totalGen = byType.wind + byType.solar + byType.nuclear + byType.battery;
+    const myMix = totalGen > 0
+      ? {
+          wind: { mw: Math.round(byType.wind), pct: (byType.wind / totalGen) * 100 },
+          solar: { mw: Math.round(byType.solar), pct: (byType.solar / totalGen) * 100 },
+          nuclear: { mw: Math.round(byType.nuclear), pct: (byType.nuclear / totalGen) * 100 },
+          battery: { mw: Math.round(byType.battery), pct: (byType.battery / totalGen) * 100 },
+          total: totalGen,
+        }
+      : null;
+    return { netMw, genMw, loadMw, myMix };
   }, [cityBuildings]);
 
   const cityStats = useMemo(() => calcCityStats(cityBuildings), [cityBuildings]);
@@ -51,6 +73,56 @@ export default function App() {
     return Math.round(100 * (0.35 * happy + 0.25 * jobCoverage + 0.2 * housingCoverage + 0.2 * powerOk));
   }, [cityStats, gridDelta.netMw]);
 
+  const gameContext = useMemo(() => ({
+    city: activeCity,
+    austinScore,
+    budget: { cashM: totalSpentM, expandSpentM },
+    buildings: {
+      count: cityBuildings.length,
+      breakdown: cityBuildings.reduce((acc, b) => { acc[b.type] = (acc[b.type] || 0) + 1; return acc; }, {}),
+    },
+    grid: {
+      netMw: Math.round(gridDelta.netMw),
+      generationMw: Math.round(gridDelta.genMw),
+      loadMw: Math.round(gridDelta.loadMw),
+    },
+    cityStats: {
+      population: cityStats.population,
+      jobs: cityStats.jobs,
+      housingUnits: cityStats.housingUnits,
+      happiness: Math.round((cityStats.happiness ?? 0.6) * 100),
+      netPerDay: cityStats.netPerDay,
+    },
+    ercot: ercotData ? {
+      demand: ercotData.demand,
+      frequency: ercotData.frequency,
+      wind: ercotData.windOutput,
+      solar: ercotData.solarOutput,
+    } : null,
+    fuelMix: fuelMix ? {
+      wind: fuelMix.wind?.pct,
+      solar: fuelMix.solar?.pct,
+      nuclear: fuelMix.nuclear?.pct,
+      gas: fuelMix.gas?.pct,
+    } : null,
+    unlockedChunks: unlockedChunks.length,
+  }), [activeCity, austinScore, totalSpentM, expandSpentM, cityBuildings, gridDelta, cityStats, ercotData, fuelMix, unlockedChunks]);
+
+  useEffect(() => {
+    if (sceneReady && !loadingDone) {
+      setLoadingDone(true);
+    }
+  }, [sceneReady, loadingDone]);
+
+  const handleLoadingDone = useCallback(() => {
+    setShowMapZoom(true);
+  }, []);
+
+  const handleMapZoomComplete = useCallback(() => {
+    setMapZoomDone(true);
+    setShowMapZoom(false);
+  }, []);
+
   useEffect(() => {
     const handler = (e) => {
       if (e.key === 'Escape') { setActiveTool(null); setSelectedBuilding(null); }
@@ -61,10 +133,9 @@ export default function App() {
 
   const handlePlaceBuilding = useCallback((type, gridX, gridZ) => {
     const cost = calcPlacementCostM(type);
-    if (cost > cashM) return;
-    setCashM(v => Math.max(0, +(v - cost).toFixed(2)));
+    setTotalSpentM(v => +(v + cost).toFixed(2));
     setPlacedBuildings(prev => [...prev, { type, gridX, gridZ }]);
-  }, [cashM]);
+  }, []);
 
   const EXPAND_COST_M = 75;
   const handleUnlockChunk = useCallback((cx, cz) => {
@@ -87,7 +158,8 @@ export default function App() {
 
   return (
     <div className="w-full h-full relative overflow-hidden">
-      <LoadingScreen videoSrc={loadingVideo} show={!sceneReady} />
+      <LoadingScreen videoSrc={loadingVideo} show={!sceneReady} onDone={handleLoadingDone} />
+      <MapZoomTransition show={showMapZoom} onComplete={handleMapZoomComplete} />
 
       <CityScene
         activeCity={activeCity}
@@ -102,72 +174,80 @@ export default function App() {
         onSelectBuilding={setSelectedBuilding}
         onDeselectBuilding={() => setSelectedBuilding(null)}
         onReady={() => setSceneReady(true)}
+        animateIn={mapZoomDone}
       />
 
-      <HUD
-        ercotData={ercotData}
-        fuelMix={fuelMix}
-        status={status}
-        lastUpdate={lastUpdate}
-        placedBuildings={cityBuildings}
-        gridDelta={gridDelta}
-        activeCity={activeCity}
-        cashM={cashM}
-        expandCostM={EXPAND_COST_M}
-        expandSpentM={expandSpentM}
-        unlockedChunks={unlockedChunks}
-        chunkSize={chunkSize}
-        cityStats={cityStats}
-        austinScore={austinScore}
-      />
-
-      <BuildToolbar
-        activeTool={activeTool}
-        onSelectTool={setActiveTool}
-        onUndo={handleUndo}
-        buildCount={cityBuildings.length}
-        cashM={cashM}
-      />
-
-      {selectedBuilding !== null && cityBuildings[selectedBuilding] && (
-        <BuildingInfo
-          building={cityBuildings[selectedBuilding]}
-          index={selectedBuilding}
-          onRemove={handleRemoveBuilding}
-          onClose={() => setSelectedBuilding(null)}
+      <div
+        className="transition-opacity duration-1000"
+        style={{ opacity: mapZoomDone ? 1 : 0, pointerEvents: mapZoomDone ? 'auto' : 'none' }}
+      >
+        <HUD
+          ercotData={ercotData}
+          fuelMix={fuelMix}
+          status={status}
+          lastUpdate={lastUpdate}
+          placedBuildings={cityBuildings}
+          gridDelta={gridDelta}
+          activeCity={activeCity}
+          totalSpentM={totalSpentM}
+          expandCostM={EXPAND_COST_M}
+          expandSpentM={expandSpentM}
+          unlockedChunks={unlockedChunks}
+          chunkSize={chunkSize}
+          cityStats={cityStats}
+          austinScore={austinScore}
         />
-      )}
 
-      {/* Active tool indicator */}
-      {activeTool && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none select-none">
-          <div className="bg-[var(--panel)] backdrop-blur-xl border border-[var(--border)] rounded-lg px-4 py-2 opacity-60">
-            <div className="font-mono text-[10px] text-[var(--text)] tracking-[1px] flex items-center gap-2">
-              <span className="text-lg">{activeTool === 'expand' ? '🧱' : BUILDING_TYPES[activeTool]?.icon}</span>
-              {activeTool === 'expand'
-                ? 'Click adjacent locked area to unlock'
-                : `Click grid to place ${BUILDING_TYPES[activeTool]?.name} ($${calcPlacementCostM(activeTool).toFixed(0)}M)`
-              }
+        <BuildToolbar
+          activeTool={activeTool}
+          onSelectTool={setActiveTool}
+          onUndo={handleUndo}
+          buildCount={cityBuildings.length}
+          totalSpentM={totalSpentM}
+        />
+
+        {selectedBuilding !== null && cityBuildings[selectedBuilding] && (
+          <BuildingInfo
+            building={cityBuildings[selectedBuilding]}
+            index={selectedBuilding}
+            onRemove={handleRemoveBuilding}
+            onClose={() => setSelectedBuilding(null)}
+          />
+        )}
+
+        {/* Active tool indicator */}
+        {activeTool && (
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none select-none">
+            <div className="bg-[var(--panel)] backdrop-blur-xl border border-[var(--border)] rounded-lg px-4 py-2 opacity-60">
+              <div className="font-mono text-[10px] text-[var(--text)] tracking-[1px] flex items-center gap-2">
+                <span className="text-lg">{activeTool === 'expand' ? '🧱' : BUILDING_TYPES[activeTool]?.icon}</span>
+                {activeTool === 'expand'
+                  ? 'Click adjacent locked area to unlock'
+                  : `Click grid to place ${BUILDING_TYPES[activeTool]?.name} ($${calcPlacementCostM(activeTool).toFixed(0)}M)`
+                }
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Controls hint */}
-      <div className="absolute bottom-20 right-3 z-20 pointer-events-none select-none">
-        <div className="font-mono text-[7px] text-[var(--dim)] opacity-30 text-right space-y-0.5">
-          <div>ORBIT: drag</div>
-          <div>ZOOM: scroll</div>
-          <div>ESC: cancel</div>
+        {/* Controls hint */}
+        <div className="absolute bottom-20 right-3 z-20 pointer-events-none select-none">
+          <div className="font-mono text-[7px] text-[var(--dim)] opacity-30 text-right space-y-0.5">
+            <div>ORBIT: drag</div>
+            <div>ZOOM: scroll</div>
+            <div>ESC: cancel</div>
+          </div>
         </div>
+
+        {/* Scan line effect */}
+        <div className="absolute top-0 left-0 right-0 h-px z-20 pointer-events-none"
+             style={{
+               background: 'linear-gradient(90deg, transparent, rgba(0,212,255,0.3), transparent)',
+               animation: 'scan-line 8s ease-in-out infinite',
+             }} />
+
+        <AIChatBox gameContext={gameContext} />
       </div>
-
-      {/* Scan line effect */}
-      <div className="absolute top-0 left-0 right-0 h-px z-20 pointer-events-none"
-           style={{
-             background: 'linear-gradient(90deg, transparent, rgba(0,212,255,0.3), transparent)',
-             animation: 'scan-line 8s ease-in-out infinite',
-           }} />
     </div>
   );
 }

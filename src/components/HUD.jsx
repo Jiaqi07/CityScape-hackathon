@@ -9,7 +9,7 @@ export default function HUD({
   placedBuildings,
   gridDelta,
   activeCity,
-  cashM,
+  totalSpentM,
   expandCostM,
   expandSpentM,
   unlockedChunks,
@@ -56,17 +56,18 @@ export default function HUD({
             </span>
           </div>
 
-          {/* Expand cost counter (side card) */}
+          {/* Expansion: total spent (accumulates per unlock) */}
           <div className={`pointer-events-auto ${cardClass} px-3 py-2 animate-fade-up`} style={{ minWidth: 220 }}>
             <div className="flex items-center justify-between">
-              <span className="font-mono text-[7px] text-[var(--dim)] tracking-[2px]">EXPANSION COST</span>
-              <span className="font-mono text-[9px] font-bold text-[var(--accent)] tabular-nums">
+              <span className="font-mono text-[7px] text-[var(--dim)] tracking-[2px]">TOTAL EXPANSION SPENT</span>
+              <span className="font-mono text-[11px] font-bold text-[var(--accent)] tabular-nums">
                 ${fmtMoney(expandSpentM ?? 0)}M
               </span>
             </div>
             <div className="flex items-center justify-between mt-1">
-              <span className="font-mono text-[7px] text-[var(--dim)] opacity-70">Per expand</span>
+              <span className="font-mono text-[7px] text-[var(--dim)] opacity-70">Per chunk</span>
               <span className="font-mono text-[8px] text-[var(--text)] tabular-nums">${fmtMoney(expandCostM ?? 0)}M</span>
+              <span className="font-mono text-[7px] text-[var(--dim)] opacity-70">· {unlockedChunks?.length ?? 0} unlocked</span>
             </div>
           </div>
 
@@ -80,7 +81,7 @@ export default function HUD({
             storageKey="hud:dashboard"
           >
             <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-              <V label="BUDGET" value={`$${fmtMoney(cashM)}`} unit="M" color="#c0d4e8" />
+              <V label="TOTAL SPENT" value={`$${fmtMoney(totalSpentM)}`} unit="M" color="#c0d4e8" />
               <V label="DAILY NET" value={`${(cityStats?.netPerDay ?? 0) >= 0 ? '+' : ''}${fmtMoney(cityStats?.netPerDay ?? 0)}`} unit="M" color={(cityStats?.netPerDay ?? 0) >= 0 ? '#00ff88' : '#ff6b6b'} />
               <V label="POP" value={fmt(cityStats?.population ?? 0)} unit="" />
               <V label="JOBS" value={fmt(cityStats?.jobs ?? 0)} unit="" />
@@ -123,42 +124,65 @@ export default function HUD({
         </div>
       </div>
 
-      {/* Top-right: Fuel mix */}
-      {fuelMix && (
-        <div className="absolute top-3 right-3 z-30 pointer-events-none select-none">
-          <div className={`pointer-events-auto ${cardClass} px-3 py-2.5 animate-fade-up`} style={{ minWidth: 180 }}>
+      {/* Top-right: ERCOT mix + Your city mix (updates when you add buildings) */}
+      <div className="absolute top-3 right-3 z-30 pointer-events-none select-none flex flex-col gap-1.5 items-end">
+        {fuelMix && (
+          <div className={`pointer-events-auto ${cardClass} px-3 py-2.5 animate-fade-up`} style={{ minWidth: 200 }}>
             <div className="flex items-center justify-between mb-2">
-              <span className="font-mono text-[7px] text-[var(--dim)] tracking-[2px]">GENERATION MIX</span>
+              <span className="font-mono text-[7px] text-[var(--dim)] tracking-[2px]">ERCOT LIVE</span>
               <span className="font-mono text-[7px] text-[var(--dim)] tracking-[1px] opacity-70">
-                {isLive ? `LIVE · ${lastUpdateLabel}` : status.toUpperCase()}
+                {isLive ? `${lastUpdateLabel}` : status.toUpperCase()}
               </span>
             </div>
-
-            {/* Stacked bar */}
             <div className="flex h-2 rounded-full overflow-hidden gap-px mb-2">
-              <div style={{ width: `${fuelMix.wind.pct}%`, background: '#00d4ff' }} className="rounded-full transition-all duration-1000" />
-              <div style={{ width: `${fuelMix.solar.pct}%`, background: '#ffe043' }} className="rounded-full transition-all duration-1000" />
-              <div style={{ width: `${fuelMix.nuclear.pct}%`, background: '#a855f7' }} className="rounded-full transition-all duration-1000" />
-              <div style={{ width: `${fuelMix.gas.pct}%`, background: '#ff8c42' }} className="rounded-full transition-all duration-1000" />
+              <div style={{ width: `${fuelMix.wind.pct}%`, background: '#00d4ff' }} className="rounded-full transition-all duration-500" />
+              <div style={{ width: `${fuelMix.solar.pct}%`, background: '#ffe043' }} className="rounded-full transition-all duration-500" />
+              <div style={{ width: `${fuelMix.nuclear.pct}%`, background: '#a855f7' }} className="rounded-full transition-all duration-500" />
+              <div style={{ width: `${fuelMix.gas.pct}%`, background: '#ff8c42' }} className="rounded-full transition-all duration-500" />
             </div>
-
             <div className="space-y-1">
               <MixRow label="Wind" mw={fuelMix.wind.mw} pct={fuelMix.wind.pct} color="#00d4ff" />
               <MixRow label="Solar" mw={fuelMix.solar.mw} pct={fuelMix.solar.pct} color="#ffe043" />
               <MixRow label="Nuclear" mw={fuelMix.nuclear.mw} pct={fuelMix.nuclear.pct} color="#a855f7" />
               <MixRow label="Gas/Other" mw={fuelMix.gas.mw} pct={fuelMix.gas.pct} color="#ff8c42" />
             </div>
-
-            {/* Renewable percentage */}
             <div className="mt-2 pt-2 border-t border-[rgba(255,255,255,0.10)] flex items-baseline gap-1.5">
-              <span className="font-mono text-[16px] font-bold text-[var(--accent2)]">
+              <span className="font-mono text-[14px] font-bold text-[var(--accent2)]">
                 {(fuelMix.wind.pct + fuelMix.solar.pct).toFixed(0)}%
               </span>
               <span className="font-mono text-[7px] text-[var(--dim)]">RENEWABLE</span>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        {/* Your city generation mix — updates when you add/remove wind/solar/nuclear/battery */}
+        {(gridDelta.myMix && gridDelta.myMix.total > 0) && (
+          <div className={`pointer-events-auto ${cardClass} px-3 py-2.5 animate-fade-up`} style={{ minWidth: 200 }}>
+            <div className="flex items-center justify-between mb-2">
+              <span className="font-mono text-[7px] text-[var(--dim)] tracking-[2px]">YOUR CITY MIX</span>
+              <span className="font-mono text-[8px] text-[var(--accent)] tabular-nums">{fmt(gridDelta.myMix.total)} MW</span>
+            </div>
+            <div className="flex h-2 rounded-full overflow-hidden gap-px mb-2">
+              <div style={{ width: `${gridDelta.myMix.wind.pct}%`, background: '#00d4ff' }} className="rounded-full transition-all duration-300" />
+              <div style={{ width: `${gridDelta.myMix.solar.pct}%`, background: '#ffe043' }} className="rounded-full transition-all duration-300" />
+              <div style={{ width: `${gridDelta.myMix.nuclear.pct}%`, background: '#ff8c42' }} className="rounded-full transition-all duration-300" />
+              <div style={{ width: `${gridDelta.myMix.battery.pct}%`, background: '#a855f7' }} className="rounded-full transition-all duration-300" />
+            </div>
+            <div className="space-y-1">
+              {gridDelta.myMix.wind.mw > 0 && <MixRow label="Wind" mw={gridDelta.myMix.wind.mw} pct={gridDelta.myMix.wind.pct} color="#00d4ff" />}
+              {gridDelta.myMix.solar.mw > 0 && <MixRow label="Solar" mw={gridDelta.myMix.solar.mw} pct={gridDelta.myMix.solar.pct} color="#ffe043" />}
+              {gridDelta.myMix.nuclear.mw > 0 && <MixRow label="Nuclear" mw={gridDelta.myMix.nuclear.mw} pct={gridDelta.myMix.nuclear.pct} color="#ff8c42" />}
+              {gridDelta.myMix.battery.mw > 0 && <MixRow label="Battery" mw={gridDelta.myMix.battery.mw} pct={gridDelta.myMix.battery.pct} color="#a855f7" />}
+            </div>
+            <div className="mt-2 pt-2 border-t border-[rgba(255,255,255,0.10)] flex items-baseline gap-1.5">
+              <span className="font-mono text-[14px] font-bold text-[var(--accent2)]">
+                {((gridDelta.myMix.wind.pct + gridDelta.myMix.solar.pct)).toFixed(0)}%
+              </span>
+              <span className="font-mono text-[7px] text-[var(--dim)]">YOUR RENEWABLE</span>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Bottom-left: Your grid stats */}
       {placedBuildings.length > 0 && (
@@ -201,6 +225,8 @@ function CollapsiblePanel({ title, right, children, minWidth, cardClass, storage
     }
   });
 
+  const peekPx = 34;
+
   const toggle = () => {
     setCollapsed(v => {
       const next = !v;
@@ -214,10 +240,17 @@ function CollapsiblePanel({ title, right, children, minWidth, cardClass, storage
   };
 
   return (
-    <div className={`pointer-events-auto ${cardClass} px-3 py-2.5 animate-fade-up`} style={{ minWidth }}>
+    <div
+      className={`pointer-events-auto ${cardClass} px-3 py-2.5 animate-fade-up transition-transform duration-300 ease-out will-change-transform`}
+      style={{
+        minWidth,
+        transform: collapsed ? `translateX(calc(-100% + ${peekPx}px))` : 'translateX(0px)',
+      }}
+    >
       <button
         type="button"
         onClick={toggle}
+        aria-expanded={!collapsed}
         className="w-full flex items-center justify-between gap-2"
       >
         <span className="font-mono text-[7px] text-[var(--dim)] tracking-[2px]">{title}</span>
@@ -230,7 +263,7 @@ function CollapsiblePanel({ title, right, children, minWidth, cardClass, storage
             fill="none"
             stroke="currentColor"
             strokeWidth="2"
-            className={`text-[var(--dim)] opacity-70 transition-transform ${collapsed ? '' : 'rotate-180'}`}
+            className={`text-[var(--dim)] opacity-70 transition-transform ${collapsed ? '-rotate-90' : 'rotate-90'}`}
           >
             <path d="M6 9l6 6 6-6" />
           </svg>
