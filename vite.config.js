@@ -47,15 +47,33 @@ function openAiPenguMiddleware({ apiKey, model }) {
         body: JSON.stringify({
           model: model || 'gpt-4o-mini',
           messages,
+          stream: true,
           temperature: 0.75,
           max_tokens: 512,
         }),
       });
 
-      const text = await upstream.text();
-      res.statusCode = upstream.status;
-      res.setHeader('Content-Type', 'application/json');
-      res.end(text);
+      if (!upstream.ok) {
+        const errText = await upstream.text();
+        res.statusCode = upstream.status;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(errText || JSON.stringify({ error: { message: 'OpenAI request failed' } }));
+        return;
+      }
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+      const reader = upstream.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        res.write(decoder.decode(value, { stream: true }));
+      }
+      res.end();
     } catch (e) {
       res.statusCode = 500;
       res.setHeader('Content-Type', 'application/json');
@@ -76,7 +94,7 @@ function openAiPenguMiddleware({ apiKey, model }) {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const apiKey = env.OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+  const apiKey = env.OPENAI_API_KEY || process.env.OPENAI_API_KEY || env.VITE_OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
   const model = env.OPENAI_MODEL || process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
   return {

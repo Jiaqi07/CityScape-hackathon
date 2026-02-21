@@ -140,7 +140,7 @@ export default function AIChatBox({ gameContext }) {
               <ChatBubble key={i} msg={m} />
             ))}
 
-            {isLoading && (
+            {isLoading && (!messages.length || !messages[messages.length - 1]?.streaming) && (
               <div className="flex items-center gap-2 pl-1">
                 <img src="/avatar.png" alt="" className="w-5 h-5 rounded-full object-cover border border-[rgba(0,212,255,0.2)]" />
                 <div className="flex gap-1">
@@ -199,6 +199,9 @@ function ChatBubble({ msg }) {
         style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
       >
         {formatBotText(msg.text)}
+        {isBot && msg.streaming && (
+          <span className="inline-block w-2 h-3.5 ml-0.5 bg-[var(--accent)] animate-pulse" style={{ verticalAlign: 'text-bottom' }} />
+        )}
       </div>
     </div>
   );
@@ -206,7 +209,8 @@ function ChatBubble({ msg }) {
 
 function formatBotText(text) {
   if (!text) return text;
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
+  const noHeaders = text.replace(/^#{1,6}\s*/gm, '').trim();
+  const parts = noHeaders.split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return (

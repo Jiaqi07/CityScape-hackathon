@@ -13,7 +13,8 @@ Your expertise spans:
 
 PERSONALITY & STYLE
 - Friendly, concise, game-coach tone — like a witty city-planning mentor
-- Use short paragraphs & bullet points; bold key terms
+- Use short paragraphs and bullet points only; bold key terms when helpful
+- Do NOT use markdown section headers (no ## or ###). Write as if you're talking.
 - Reference the player's ACTUAL numbers (buildings placed, MW delta, budget, score, ERCOT live data) when they're provided in the context
 - Give concrete, actionable advice: "Place 2 more wind farms in the NW chunk to offset that 180 MW data-center load"
 - If the player's grid is in trouble (negative MW, low happiness, budget crunch), proactively warn and suggest fixes
@@ -42,6 +43,9 @@ export default function useGeminiChat() {
 
     setIsLoading(true);
 
+    const placeholderBotMsg = { role: 'bot', text: '', ts: Date.now(), streaming: true };
+    setMessages(prev => [...prev, placeholderBotMsg]);
+
     try {
       const res = await fetch(API_URL, {
         method: 'POST',
@@ -59,19 +63,60 @@ export default function useGeminiChat() {
         throw new Error(`OpenAI ${res.status}: ${errText.slice(0, 200)}`);
       }
 
-      const json = await res.json();
-      const reply = json?.choices?.[0]?.message?.content?.trim() || 'Hmm, I didn\'t get a response. Try again!';
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullReply = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            const payload = trimmed.slice(6);
+            if (payload === '[DONE]') continue;
+            try {
+              const json = JSON.parse(payload);
+              const content = json?.choices?.[0]?.delta?.content;
+              if (typeof content === 'string') {
+                fullReply += content;
+                setMessages(prev => {
+                  const next = [...prev];
+                  const last = next[next.length - 1];
+                  if (last?.streaming) next[next.length - 1] = { ...last, text: fullReply };
+                  return next;
+                });
+              }
+            } catch (_) {}
+          }
+        }
+      }
+
+      const reply = fullReply.trim() || "Hmm, I didn't get a response. Try again!";
 
       historyRef.current = [
         ...historyRef.current,
         { role: 'assistant', content: reply },
       ];
 
-      const botMsg = { role: 'bot', text: reply, ts: Date.now() };
-      setMessages(prev => [...prev, botMsg]);
+      setMessages(prev => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last?.streaming) next[next.length - 1] = { ...last, text: reply, streaming: false };
+        return next;
+      });
     } catch (err) {
-      const errMsg = { role: 'bot', text: `Error: ${err.message}`, ts: Date.now(), isError: true };
-      setMessages(prev => [...prev, errMsg]);
+      setMessages(prev => {
+        const next = [...prev];
+        const last = next[next.length - 1];
+        if (last?.streaming) next[next.length - 1] = { role: 'bot', text: `Error: ${err.message}`, ts: Date.now(), isError: true };
+        else next.push({ role: 'bot', text: `Error: ${err.message}`, ts: Date.now(), isError: true });
+        return next;
+      });
     } finally {
       setIsLoading(false);
     }
