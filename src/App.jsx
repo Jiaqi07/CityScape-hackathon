@@ -26,6 +26,7 @@ export default function App() {
   const [loadingDone, setLoadingDone] = useState(false);
   const [showMapZoom, setShowMapZoom] = useState(false);
   const [mapZoomDone, setMapZoomDone] = useState(false);
+  const [isDaytime, setIsDaytime] = useState(false);
 
   const cityBuildings = placedBuildings;
 
@@ -175,6 +176,7 @@ export default function App() {
         onDeselectBuilding={() => setSelectedBuilding(null)}
         onReady={() => setSceneReady(true)}
         animateIn={mapZoomDone}
+        isDaytime={isDaytime}
       />
 
       <div
@@ -238,6 +240,20 @@ export default function App() {
             <div>ESC: cancel</div>
           </div>
         </div>
+
+        {/* Day/Night Toggle */}
+        <button
+          onClick={() => setIsDaytime(v => !v)}
+          className="absolute bottom-3 left-3 z-30 group"
+          style={{ width: 48, height: 48 }}
+          aria-label="Toggle day/night"
+        >
+          <div className="relative w-full h-full flex items-center justify-center bg-[var(--panel)] backdrop-blur-xl border border-[var(--border)] rounded-full hover:border-[rgba(0,212,255,0.4)] transition-all duration-300 hover:scale-110 shadow-lg">
+            <span className="text-2xl transition-transform duration-500" style={{ transform: isDaytime ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+              {isDaytime ? '☀️' : '🌙'}
+            </span>
+          </div>
+        </button>
 
         {/* Scan line effect */}
         <div className="absolute top-0 left-0 right-0 h-px z-20 pointer-events-none"

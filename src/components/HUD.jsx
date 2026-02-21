@@ -39,20 +39,13 @@ export default function HUD({
         <div className="flex flex-col gap-1.5">
           {/* Logo */}
           <div className="flex items-center gap-2 mb-0.5 pointer-events-auto">
-            <img
-              src="/citybuilder.png"
-              alt="CityScape"
-              className="w-8 h-8 object-contain"
-            />
+            <div className="w-8 h-8 flex items-center justify-center rounded-lg bg-[rgba(0,212,255,0.12)] border border-[rgba(0,212,255,0.25)] shrink-0">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-[var(--accent)]" aria-hidden>
+                <path d="M3 21h18v-2H3v2zM4 18h3v-8H4v8zm5 0h3V9H9v9zm5 0h3V5h-3v13zm5 0h3v-6h-3v6z" fill="currentColor"/>
+              </svg>
+            </div>
             <span className="font-display text-[13px] font-bold tracking-[3px] text-[var(--accent)]">
               CityScape
-            </span>
-            <span className={`font-mono text-[7px] tracking-[1px] px-1.5 py-0.5 rounded-sm border ${
-              isLive
-                ? 'text-[var(--accent2)] border-[rgba(0,255,136,0.2)] bg-[rgba(0,255,136,0.05)]'
-                : 'text-[var(--dim)] border-[rgba(255,255,255,0.10)]'
-            }`}>
-              {isLive ? 'LIVE' : status === 'connecting' ? '...' : 'OFFLINE'}
             </span>
           </div>
 

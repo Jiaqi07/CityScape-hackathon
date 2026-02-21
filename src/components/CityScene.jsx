@@ -88,21 +88,38 @@ function AmbientParticles({ count = 60, gridSize }) {
   );
 }
 
-function GroundPlane({ gridSize }) {
+function GroundPlane({ gridSize, isDaytime }) {
+  const dayColor = "#d4e0e8";
+  const nightColor = "#060d1a";
+  const dayGridColor1 = "#b0c0d0";
+  const dayGridColor2 = "#c8d4e0";
+  const nightGridColor1 = "#0d2040";
+  const nightGridColor2 = "#091828";
+
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.02, 0]} receiveShadow>
         <planeGeometry args={[gridSize + 30, gridSize + 30]} />
-        <meshStandardMaterial color="#060d1a" metalness={0.15} roughness={0.85} />
+        <meshStandardMaterial 
+          color={isDaytime ? dayColor : nightColor} 
+          metalness={0.15} 
+          roughness={0.85} 
+        />
       </mesh>
       <gridHelper
-        args={[gridSize, gridSize, '#0d2040', '#091828']}
+        args={[gridSize, gridSize, isDaytime ? dayGridColor1 : nightGridColor1, isDaytime ? dayGridColor2 : nightGridColor2]}
         position={[0, 0.005, 0]}
       />
       {/* Subtle glow ring at center */}
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.008, 0]}>
         <ringGeometry args={[0.8, 1.5, 32]} />
-        <meshStandardMaterial color="#00d4ff" emissive="#00d4ff" emissiveIntensity={0.3} transparent opacity={0.15} />
+        <meshStandardMaterial 
+          color={isDaytime ? "#ffd700" : "#00d4ff"} 
+          emissive={isDaytime ? "#ffd700" : "#00d4ff"} 
+          emissiveIntensity={isDaytime ? 0.2 : 0.3} 
+          transparent 
+          opacity={0.15} 
+        />
       </mesh>
     </group>
   );
@@ -844,6 +861,7 @@ function SceneContent({
   onSelectBuilding,
   onDeselectBuilding,
   animateIn,
+  isDaytime,
 }) {
   const [hoveredTile, setHoveredTile] = useState({ x: null, z: null });
   const [hoveredBuilding, setHoveredBuilding] = useState(null);
@@ -907,17 +925,31 @@ function SceneContent({
       <CameraRig gridSize={gridSize} animateIn={animateIn} />
 
       {/* Enhanced lighting */}
-      <ambientLight intensity={0.45} />
-      <directionalLight position={[12, 22, 12]} intensity={1.4} color="#8090c0" castShadow />
-      <directionalLight position={[-10, 14, -10]} intensity={0.5} color="#4060a0" />
-      <pointLight position={[0, 10, 0]} intensity={1.2} color="#00d4ff" distance={35} />
-      <pointLight position={[8, 5, 8]} intensity={0.4} color="#ff8c42" distance={20} />
-      <pointLight position={[-8, 5, -8]} intensity={0.4} color="#a855f7" distance={20} />
-      <hemisphereLight args={['#2040a0', '#050a14', 0.7]} />
+      {isDaytime ? (
+        <>
+          {/* Daytime lighting */}
+          <ambientLight intensity={1.2} />
+          <directionalLight position={[20, 40, 20]} intensity={2.5} color="#fff5e6" castShadow />
+          <directionalLight position={[-15, 25, -15]} intensity={0.8} color="#e6f2ff" />
+          <pointLight position={[0, 15, 0]} intensity={1.5} color="#ffd700" distance={40} />
+          <hemisphereLight args={['#87ceeb', '#f0e68c', 1.0]} />
+        </>
+      ) : (
+        <>
+          {/* Nighttime lighting */}
+          <ambientLight intensity={0.45} />
+          <directionalLight position={[12, 22, 12]} intensity={1.4} color="#8090c0" castShadow />
+          <directionalLight position={[-10, 14, -10]} intensity={0.5} color="#4060a0" />
+          <pointLight position={[0, 10, 0]} intensity={1.2} color="#00d4ff" distance={35} />
+          <pointLight position={[8, 5, 8]} intensity={0.4} color="#ff8c42" distance={20} />
+          <pointLight position={[-8, 5, -8]} intensity={0.4} color="#a855f7" distance={20} />
+          <hemisphereLight args={['#2040a0', '#050a14', 0.7]} />
+        </>
+      )}
 
-      <fog attach="fog" args={['#050a14', gridSize * 1.0, gridSize * 2.5]} />
+      <fog attach="fog" args={[isDaytime ? '#b8d4e8' : '#050a14', gridSize * 1.0, gridSize * 2.5]} />
 
-      <GroundPlane gridSize={gridSize} />
+      <GroundPlane gridSize={gridSize} isDaytime={isDaytime} />
       <ChunkOverlay
         gridSize={gridSize}
         chunkSize={chunkSize}
@@ -1011,21 +1043,32 @@ export default function CityScene({
   onDeselectBuilding,
   onReady,
   animateIn,
+  isDaytime,
 }) {
   const city = CITIES[activeCity];
   const gridSize = city?.worldSize || 40;
   const cs = chunkSize || city?.chunkSize || 8;
+  const bgColor = isDaytime ? '#b8d4e8' : '#050a14';
+  const canvasRef = useRef();
+
+  useEffect(() => {
+    if (canvasRef.current?.gl) {
+      canvasRef.current.gl.setClearColor(bgColor);
+      canvasRef.current.gl.toneMappingExposure = isDaytime ? 2.2 : 1.6;
+    }
+  }, [isDaytime, bgColor]);
 
   return (
-    <div className="absolute inset-0" style={{ background: '#050a14' }}>
+    <div className="absolute inset-0" style={{ background: bgColor, transition: 'background 0.8s ease' }}>
       <Canvas
+        ref={canvasRef}
         camera={{ position: [0, gridSize * 4, 0.01], fov: 45 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
         onCreated={({ gl }) => {
-          gl.setClearColor('#050a14');
+          gl.setClearColor(bgColor);
           gl.toneMapping = THREE.ACESFilmicToneMapping;
-          gl.toneMappingExposure = 1.6;
+          gl.toneMappingExposure = isDaytime ? 2.2 : 1.6;
           onReady?.();
         }}
       >
@@ -1042,6 +1085,7 @@ export default function CityScene({
           onSelectBuilding={onSelectBuilding}
           onDeselectBuilding={onDeselectBuilding}
           animateIn={animateIn}
+          isDaytime={isDaytime}
         />
       </Canvas>
     </div>

@@ -76,9 +76,11 @@ export default function useGeminiChat() {
         buffer = lines.pop() || '';
         for (const line of lines) {
           const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(':')) continue;
           if (trimmed.startsWith('data: ')) {
-            const payload = trimmed.slice(6);
+            const payload = trimmed.slice(6).trim();
             if (payload === '[DONE]') continue;
+            if (!payload) continue;
             try {
               const json = JSON.parse(payload);
               const content = json?.choices?.[0]?.delta?.content;
@@ -91,7 +93,9 @@ export default function useGeminiChat() {
                   return next;
                 });
               }
-            } catch (_) {}
+            } catch (parseErr) {
+              console.warn('Failed to parse SSE chunk:', payload.slice(0, 100), parseErr.message);
+            }
           }
         }
       }
@@ -110,11 +114,15 @@ export default function useGeminiChat() {
         return next;
       });
     } catch (err) {
+      console.error('Chat error:', err);
+      const errorMsg = err.message.includes('JSON')
+        ? 'Stream parsing error. Please try again.'
+        : `Error: ${err.message}`;
       setMessages(prev => {
         const next = [...prev];
         const last = next[next.length - 1];
-        if (last?.streaming) next[next.length - 1] = { role: 'bot', text: `Error: ${err.message}`, ts: Date.now(), isError: true };
-        else next.push({ role: 'bot', text: `Error: ${err.message}`, ts: Date.now(), isError: true });
+        if (last?.streaming) next[next.length - 1] = { role: 'bot', text: errorMsg, ts: Date.now(), isError: true };
+        else next.push({ role: 'bot', text: errorMsg, ts: Date.now(), isError: true });
         return next;
       });
     } finally {
