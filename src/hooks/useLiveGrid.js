@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 // Parse ERCOT real-time system conditions HTML page
 // Proxied through Vite dev server to bypass CORS
@@ -51,14 +51,16 @@ export function useErcotLive(intervalMs = 30000) {
 
   const fetchData = useCallback(async () => {
     try {
-      const res = await fetch('/ercot-live/real_time_system_conditions.html');
+      const res = await fetch('/ercot-live/real_time_system_conditions.html', { cache: 'no-store' });
       const html = await res.text();
       const parsed = parseErcotHtml(html);
       if (parsed.demand) {
-        setData(parsed);
-        setFuelMix(deriveFuelMix(parsed));
+        setData({ ...parsed });
+        setFuelMix(deriveFuelMix({ ...parsed }));
         setStatus('live');
         setLastUpdate(new Date());
+      } else {
+        setStatus('offline');
       }
     } catch (err) {
       console.warn('ERCOT fetch failed, check proxy config:', err);
@@ -67,9 +69,12 @@ export function useErcotLive(intervalMs = 30000) {
   }, []);
 
   useEffect(() => {
-    fetchData();
+    const kickoff = setTimeout(fetchData, 0);
     const id = setInterval(fetchData, intervalMs);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      clearTimeout(kickoff);
+    };
   }, [fetchData, intervalMs]);
 
   return { data, fuelMix, status, lastUpdate };

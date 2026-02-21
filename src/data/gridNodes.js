@@ -10,7 +10,17 @@ export const CITIES = {
     kv: 345,
     cap: 3200,
     population: '2.3M',
-    gridSize: 16,
+    // City-builder world settings (tile units)
+    worldSize: 40,
+    chunkSize: 8,
+    initialChunks: [
+      // 2x2 unlocked to start (downtown + close-in neighborhoods)
+      [2, 2], [3, 2],
+      [2, 3], [3, 3],
+    ],
+    // Downtown roughly north of the river
+    downtown: { x: 20, z: 17 },
+    riverZ: 20,
     color: '#00d4ff',
   },
 };
@@ -58,38 +68,66 @@ function seededRandom(seed) {
   };
 }
 
-function generateCityLayout(gridSize, citySeed) {
+// Austin-specific starter skyline: dense downtown cluster, river band, suburbs ring
+function generateAustinLayout(worldSize, citySeed) {
   const rand = seededRandom(citySeed);
   const buildings = [];
-  const center = gridSize / 2;
-  for (let x = 0; x < gridSize; x++) {
-    for (let z = 0; z < gridSize; z++) {
-      const distFromCenter = Math.hypot(x - center, z - center);
+  const downtown = CITIES.austin.downtown;
+  const riverZ = CITIES.austin.riverZ;
+
+  for (let x = 0; x < worldSize; x++) {
+    for (let z = 0; z < worldSize; z++) {
+      // Keep a clear river corridor (Lady Bird Lake)
+      if (Math.abs(z - riverZ) <= 1) continue;
+
+      const dx = x - downtown.x;
+      const dz = z - downtown.z;
+      const dDowntown = Math.hypot(dx, dz);
+
       const r = rand();
       const h = rand();
-      if (distFromCenter < 2) {
-        if (r < 0.8) buildings.push({ x, z, type: 'commercial', height: 1.2 + h * 2.0 });
-      } else if (distFromCenter < 4) {
-        if (r < 0.6) buildings.push({ x, z, type: 'commercial', height: 0.6 + h * 1.2 });
-        else if (r < 0.75) buildings.push({ x, z, type: 'residential', height: 0.4 + h * 0.6 });
-      } else if (distFromCenter < 6) {
-        if (r < 0.45) buildings.push({ x, z, type: 'residential', height: 0.3 + h * 0.5 });
-        else if (r < 0.55) buildings.push({ x, z, type: 'industrial', height: 0.3 + h * 0.3 });
-      } else if (distFromCenter < gridSize / 2 - 1) {
-        if (r < 0.2) buildings.push({ x, z, type: 'residential', height: 0.2 + h * 0.3 });
+
+      // Downtown: tall commercial towers
+      if (dDowntown < 4 && z < riverZ - 1) {
+        if (r < 0.65) buildings.push({ x, z, type: 'commercial', height: 1.8 + h * 3.2 });
+        continue;
+      }
+
+      // South Congress / close-in mixed area (south of river)
+      if (dDowntown < 7 && z > riverZ + 1) {
+        if (r < 0.25) buildings.push({ x, z, type: 'commercial', height: 0.7 + h * 1.2 });
+        else if (r < 0.55) buildings.push({ x, z, type: 'residential', height: 0.45 + h * 0.8 });
+        continue;
+      }
+
+      // Near-downtown neighborhoods: midrise residential + some commercial
+      if (dDowntown < 10) {
+        if (r < 0.16) buildings.push({ x, z, type: 'commercial', height: 0.6 + h * 1.0 });
+        else if (r < 0.45) buildings.push({ x, z, type: 'residential', height: 0.35 + h * 0.7 });
+        continue;
+      }
+
+      // Suburbs: sparse low residential
+      if (dDowntown < 16) {
+        if (r < 0.14) buildings.push({ x, z, type: 'residential', height: 0.22 + h * 0.35 });
       }
     }
   }
+
   return buildings;
 }
 
-const CITY_SEEDS = { austin: 42, houston: 137, dallas: 256, sanantonio: 389 };
+const CITY_SEEDS = { austin: 42 };
 const cityLayouts = {};
 export function getCityLayout(cityId) {
   if (!cityLayouts[cityId]) {
     const city = CITIES[cityId];
     if (!city) return [];
-    cityLayouts[cityId] = generateCityLayout(city.gridSize, CITY_SEEDS[cityId] || 1);
+    if (cityId === 'austin') {
+      cityLayouts[cityId] = generateAustinLayout(city.worldSize, CITY_SEEDS[cityId] || 1);
+    } else {
+      cityLayouts[cityId] = [];
+    }
   }
   return cityLayouts[cityId];
 }

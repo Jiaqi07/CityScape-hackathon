@@ -75,3 +75,23 @@ canvas {
 .animate-float { animation: float 3s ease-in-out infinite; }
 
 .tabular-nums { font-variant-numeric: tabular-nums; }
+
+@keyframes energy-flow {
+  0% { stroke-dashoffset: 20; }
+  100% { stroke-dashoffset: 0; }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.energy-line {
+  stroke-dasharray: 4 4;
+  animation: energy-flow 1s linear infinite;
+}
+
+.shimmer-bg {
+  background: linear-gradient(90deg, transparent, rgba(0,212,255,0.05), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 3s ease-in-out infinite;
+}
